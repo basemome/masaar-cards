@@ -1,18 +1,11 @@
 // MASAAR news relay. Google News refuses requests from Cloudflare, so the engine cannot read it directly.
 // This job reads the same Google News feeds from a GitHub machine and saves the newest items as one file
 // on the "relay" branch. The engine reads that file (one request) instead of each Google feed.
-// The feed list is taken from the engine itself so the two never drift apart.
 import fs from 'fs';
-const ENGINE = 'https://raw.githubusercontent.com/basemome/masaar-30/main/cloudflare-worker.js';
-const src = await (await fetch(ENGINE)).text();
-const start = src.indexOf('const FEEDS = ['), block = src.slice(start, src.indexOf('\n];', start));
-const gn = (q, gl) => 'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=ar&gl=' + gl + '&ceid=' + gl + ':ar';
-const urls = [];
-for (const line of block.split('\n')) {
-  const m = line.match(/url:\s*(?:gnRss\(\s*"([^"]+)"\s*,\s*"([A-Z]+)"\s*\)|"([^"]+)")/); if (!m) continue;
-  const url = m[3] || gn(m[1], m[2]);
-  if (/^https:\/\/news\.google\.com\//.test(url)) urls.push(url);
-}
+// masaar-30 is private, so the job cannot read the engine file. The Google feed list is kept here in feeds.json
+// (17 feeds, copied from FEEDS in cloudflare-worker.js on 25 Nov 2026). Keys must match the engine URLs exactly.
+const urls = JSON.parse(fs.readFileSync(new URL('./feeds.json', import.meta.url), 'utf8'));
+if (!urls.length) { console.error('feed list is empty'); process.exit(1); }
 const feeds = {}; let ok = 0;
 for (const url of urls) {
   try {
@@ -23,7 +16,7 @@ for (const url of urls) {
     feeds[url] = '<rss><channel>' + items.join('') + '</channel></rss>'; ok++;
   } catch (e) {}
 }
-if (ok < Math.min(3, urls.length)) { console.error('too few feeds answered', ok, '/', urls.length); process.exit(1); }
+if (ok < 3) { console.error('too few feeds answered', ok, '/', urls.length); process.exit(1); }
 fs.mkdirSync('out', { recursive: true });
 fs.writeFileSync('out/news.json', JSON.stringify({ at: new Date().toISOString(), count: ok, of: urls.length, feeds }));
 console.log('relay', ok, '/', urls.length, 'feeds');
