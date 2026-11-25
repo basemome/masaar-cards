@@ -4,7 +4,14 @@
 import fs from 'fs';
 // masaar-30 is private, so the job cannot read the engine file. The Google feed list is kept here in feeds.json
 // (17 feeds, copied from FEEDS in cloudflare-worker.js on 25 Nov 2026). Keys must match the engine URLs exactly.
-const urls = JSON.parse(fs.readFileSync(new URL('./feeds.json', import.meta.url), 'utf8'));
+// v2 · the engine publishes its own Google feed list (/api/relay-feeds), so a feed added there is relayed with no change here.
+// feeds.json is the fallback when the engine does not answer.
+let urls = JSON.parse(fs.readFileSync(new URL('./feeds.json', import.meta.url), 'utf8'));
+try {
+  const r = await fetch('https://masaar-ai-proxy.basemome.workers.dev/api/relay-feeds', { signal: AbortSignal.timeout(10000) });
+  const j = r.ok ? await r.json() : null;
+  if (j && Array.isArray(j.urls) && j.urls.length >= 3) urls = j.urls;
+} catch (e) {}
 if (!urls.length) { console.error('feed list is empty'); process.exit(1); }
 const feeds = {}; let ok = 0;
 for (const url of urls) {
