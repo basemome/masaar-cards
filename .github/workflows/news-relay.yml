@@ -1,0 +1,24 @@
+# Reads the Google News feeds the MASAAR engine cannot reach from Cloudflare and saves them to the "relay" branch.
+name: News relay
+on:
+  schedule: [{ cron: "*/15 * * * *" }]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [relay/**, .github/workflows/news-relay.yml]
+permissions: { contents: write }
+concurrency: { group: news-relay, cancel-in-progress: false }
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node relay/news-relay.mjs
+      - name: Publish to the relay branch (one commit, history not kept)
+        run: |
+          cd out && git init -q -b relay && git add news.json
+          git -c user.name=masaar-relay -c user.email=relay@users.noreply.github.com commit -q -m "news relay $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" relay
